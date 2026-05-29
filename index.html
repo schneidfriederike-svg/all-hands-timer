@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All-Hands Timer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f3; min-height: 100vh; display: flex; justify-content: center; padding: 2rem 1rem; }
+  .wrap { width: 100%; max-width: 580px; }
+
+  .connection-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ccc; margin-right: 6px; transition: background 0.3s; }
+  .connection-dot.connected { background: #1D9E75; }
+  .connection-dot.error { background: #E24B4A; }
+  .connection-bar { font-size: 12px; color: #aaa; text-align: right; margin-bottom: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+  .controller-link { font-size: 11px; background: #f0efe8; border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #666; }
+  .controller-link a { color: #378ADD; text-decoration: none; font-weight: 500; }
+  .controller-link a:hover { text-decoration: underline; }
+
+  .timer-card { background: #fff; border: 1px solid #e0e0d8; border-radius: 12px; padding: 2rem; text-align: center; margin-bottom: 1rem; }
+  .timer-section { font-size: 15px; font-weight: 500; color: #2c2c2a; margin-bottom: 2px; }
+  .timer-presenter { font-size: 13px; color: #888780; margin-bottom: 10px; }
+  .timer-display { font-size: 96px; font-weight: 500; letter-spacing: -3px; line-height: 1; margin-bottom: 10px; font-variant-numeric: tabular-nums; font-family: "SF Mono", "Fira Mono", monospace; transition: color 0.3s; }
+  .timer-display.green { color: #1D9E75; }
+  .timer-display.amber { color: #BA7517; }
+  .timer-display.red { color: #E24B4A; }
+  .timer-display.blue { color: #378ADD; }
+  .timer-label { font-size: 12px; color: #aaa; }
+  .progress-bar { height: 5px; background: #eee; border-radius: 3px; margin-bottom: 1.25rem; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.8s linear, background 0.3s; }
+  .controls { display: flex; gap: 8px; justify-content: center; margin-bottom: 1.25rem; flex-wrap: wrap; }
+  .controls button { padding: 9px 20px; font-size: 14px; border-radius: 8px; border: 1px solid #d3d1c7; background: #fff; color: #2c2c2a; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .controls button:hover { background: #f5f5f3; }
+  .controls button:active { transform: scale(0.98); }
+  .btn-primary { background: #E6F1FB !important; border-color: #378ADD !important; color: #185FA5 !important; }
+  .agenda-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 1.25rem; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 8px; border: 1px solid #e0e0d8; background: #fff; cursor: pointer; transition: background 0.15s; }
+  .item:hover { background: #f5f5f3; }
+  .item.active { border: 1.5px solid #378ADD; background: #E6F1FB; }
+  .item.done { opacity: 0.38; }
+  .item.overtime { border: 1.5px solid #E24B4A; background: #FCEBEB; }
+  .item.qa-item { padding-left: 28px; background: #fafaf8; border-color: #edecea; }
+  .item.qa-item:hover { background: #f2f2ee; }
+  .item.qa-item.active { border: 1.5px solid #378ADD; background: #E6F1FB; }
+  .item.qa-item.done { opacity: 0.38; }
+  .item.qa-item.overtime { border: 1.5px solid #E24B4A; background: #FCEBEB; }
+  .item-num { font-size: 11px; color: #bbb; min-width: 16px; }
+  .item-info { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+  .item-name { font-size: 13px; color: #2c2c2a; }
+  .item-presenter { font-size: 11px; color: #aaa; }
+  .item.active .item-name { color: #185FA5; font-weight: 500; }
+  .item.active .item-presenter { color: #378ADD; }
+  .item.overtime .item-name { color: #A32D2D; font-weight: 500; }
+  .item-dur { font-size: 12px; color: #888; min-width: 40px; text-align: right; }
+  .item-status { font-size: 12px; color: #E24B4A; min-width: 50px; text-align: right; }
+  .totals { display: flex; gap: 10px; }
+  .total-card { flex: 1; background: #f0efe8; border-radius: 8px; padding: 10px 14px; text-align: center; }
+  .total-label { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+  .total-val { font-size: 18px; font-weight: 500; color: #2c2c2a; font-family: "SF Mono", "Fira Mono", monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="connection-bar">
+    <span class="connection-dot" id="dot"></span>
+    <span id="conn-label">Connecting…</span>
+  </div>
+  <div class="controller-link">
+    📱 Controller (for your phone): <a id="ctrl-link" href="/controller" target="_blank">/controller</a>
+    <span style="cursor:pointer;color:#378ADD" onclick="copyCtrlLink()">Copy link</span>
+  </div>
+
+  <div class="timer-card">
+    <div class="timer-section" id="current-name">Waiting for server…</div>
+    <div class="timer-presenter" id="current-presenter">–</div>
+    <div class="timer-display green" id="timer-display">–:––</div>
+    <div class="timer-label" id="timer-label">connecting</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%;background:#1D9E75;"></div></div>
+  <div class="controls">
+    <button id="btn-play" class="btn-primary">▶ Start</button>
+    <button id="btn-pause">⏸ Pause</button>
+    <button id="btn-next">⏭ Next</button>
+    <button id="btn-reset">↺ Reset</button>
+  </div>
+  <div class="agenda-list" id="agenda-list"></div>
+  <div class="totals">
+    <div class="total-card"><div class="total-label">total planned</div><div class="total-val" id="total-planned">–:––</div></div>
+    <div class="total-card"><div class="total-label">elapsed</div><div class="total-val" id="total-elapsed">0:00</div></div>
+    <div class="total-card"><div class="total-label">remaining</div><div class="total-val" id="total-remaining">–:––</div></div>
+  </div>
+</div>
+<script>
+let AGENDA = [];
+let TOTAL_SECS = 0;
+let state = { currentIdx: 0, secsLeft: 0, running: false, totalElapsed: 0 };
+let ws;
+
+function fmt(s) { const a = Math.abs(s); return (s < 0 ? '+' : '') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2,'0'); }
+function fmtS(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+
+function send(cmd, extra) { ws.send(JSON.stringify({ cmd, ...extra })); }
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+
+  ws.onopen = () => {
+    document.getElementById('dot').className = 'connection-dot connected';
+    document.getElementById('conn-label').textContent = 'Connected';
+  };
+  ws.onclose = () => {
+    document.getElementById('dot').className = 'connection-dot error';
+    document.getElementById('conn-label').textContent = 'Reconnecting…';
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'init') {
+      AGENDA = msg.agenda;
+      TOTAL_SECS = AGENDA.reduce((a, x) => a + x.mins * 60, 0);
+      state = msg.state;
+      buildList();
+      render();
+    } else if (msg.type === 'state') {
+      state = { currentIdx: msg.currentIdx, secsLeft: msg.secsLeft, running: msg.running, totalElapsed: msg.totalElapsed };
+      render();
+    }
+  };
+}
+
+function render() {
+  if (!AGENDA.length) return;
+  const item = AGENDA[state.currentIdx];
+  const alloc = item.mins * 60;
+  const disp = document.getElementById('timer-display');
+  const prog = document.getElementById('progress-fill');
+  const lbl = document.getElementById('timer-label');
+
+  document.getElementById('current-name').textContent = item.name + (item.type === 'qa' ? ' — Q&A' : '');
+  document.getElementById('current-presenter').textContent = item.presenter;
+  disp.textContent = fmt(state.secsLeft);
+  prog.style.width = (state.secsLeft >= 0 ? Math.min(100, ((alloc - state.secsLeft) / alloc) * 100) : 100) + '%';
+
+  if (state.secsLeft < 0) {
+    disp.className = 'timer-display red'; prog.style.background = '#E24B4A'; lbl.textContent = 'overtime';
+  } else if (item.type === 'qa') {
+    disp.className = 'timer-display blue'; prog.style.background = '#378ADD'; lbl.textContent = state.running ? 'Q&A' : 'ready';
+  } else if (state.secsLeft <= 120) {
+    disp.className = 'timer-display amber'; prog.style.background = '#EF9F27'; lbl.textContent = '2 min warning';
+  } else {
+    disp.className = 'timer-display green'; prog.style.background = '#1D9E75'; lbl.textContent = state.running ? 'running' : 'ready';
+  }
+
+  document.getElementById('total-elapsed').textContent = fmtS(state.totalElapsed);
+  document.getElementById('total-remaining').textContent = fmtS(Math.max(0, TOTAL_SECS - state.totalElapsed));
+  document.getElementById('total-planned').textContent = fmtS(TOTAL_SECS);
+  document.title = fmt(state.secsLeft) + ' · ' + item.name;
+
+  document.querySelectorAll('.agenda-item').forEach((el, i) => {
+    el.classList.remove('active','done','overtime');
+    if (i < state.currentIdx) el.classList.add('done');
+    else if (i === state.currentIdx) {
+      el.classList.add(state.secsLeft < 0 ? 'overtime' : 'active');
+      el.querySelector('.item-status').textContent = state.secsLeft < 0 ? fmt(state.secsLeft) : '';
+    }
+  });
+}
+
+function buildList() {
+  const list = document.getElementById('agenda-list');
+  list.innerHTML = '';
+  let topicNum = 0;
+  AGENDA.forEach((item, i) => {
+    if (item.type === 'content') topicNum++;
+    const div = document.createElement('div');
+    div.className = 'item agenda-item' + (item.type === 'qa' ? ' qa-item' : '');
+    div.innerHTML = `
+      <span class="item-num">${item.type === 'content' ? topicNum : '↳'}</span>
+      <span class="item-info">
+        <span class="item-name">${item.type === 'qa' ? 'Q&A' : item.name}</span>
+        <span class="item-presenter">${item.presenter}</span>
+      </span>
+      <span class="item-dur">${item.mins} min</span>
+      <span class="item-status"></span>`;
+    div.addEventListener('click', () => send('jump', { idx: i }));
+    list.appendChild(div);
+  });
+}
+
+document.getElementById('btn-play').addEventListener('click', () => send('play'));
+document.getElementById('btn-pause').addEventListener('click', () => send('pause'));
+document.getElementById('btn-next').addEventListener('click', () => send('next'));
+document.getElementById('btn-reset').addEventListener('click', () => send('reset'));
+
+function copyCtrlLink() {
+  const url = location.origin + '/controller';
+  navigator.clipboard.writeText(url).then(() => alert('Link kopiert: ' + url));
+}
+
+// Set full controller URL
+document.getElementById('ctrl-link').href = location.origin + '/controller';
+
+connect();
+</script>
+</body>
+</html>
