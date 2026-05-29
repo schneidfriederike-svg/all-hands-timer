@@ -8,7 +8,6 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f3; min-height: 100vh; display: flex; justify-content: center; padding: 2rem 1rem; }
   .wrap { width: 100%; max-width: 580px; }
-
   .connection-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ccc; margin-right: 6px; transition: background 0.3s; }
   .connection-dot.connected { background: #1D9E75; }
   .connection-dot.error { background: #E24B4A; }
@@ -16,7 +15,6 @@
   .controller-link { font-size: 11px; background: #f0efe8; border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #666; }
   .controller-link a { color: #378ADD; text-decoration: none; font-weight: 500; }
   .controller-link a:hover { text-decoration: underline; }
-
   .timer-card { background: #fff; border: 1px solid #e0e0d8; border-radius: 12px; padding: 2rem; text-align: center; margin-bottom: 1rem; }
   .timer-section { font-size: 15px; font-weight: 500; color: #2c2c2a; margin-bottom: 2px; }
   .timer-presenter { font-size: 13px; color: #888780; margin-bottom: 10px; }
@@ -83,7 +81,7 @@
     <button id="btn-pause">⏸ Pause</button>
     <button id="btn-next">⏭ Next</button>
     <button id="btn-reset">↺ Reset</button>
-    <button id="btn-popup" class="btn-popup">⧉ Pop out</button>
+    <button id="btn-pip" class="btn-popup">⧉ Float</button>
   </div>
   <div class="agenda-list" id="agenda-list"></div>
   <div class="totals">
@@ -92,12 +90,22 @@
     <div class="total-card"><div class="total-label">remaining</div><div class="total-val" id="total-remaining">–:––</div></div>
   </div>
 </div>
+
+<!-- Hidden canvas + video for Picture-in-Picture -->
+<canvas id="pip-canvas" width="640" height="360" style="display:none"></canvas>
+<video id="pip-video" style="position:absolute;width:1px;height:1px;opacity:0.01;pointer-events:none" muted playsinline></video>
+
 <script>
 let AGENDA = [];
 let TOTAL_SECS = 0;
 let state = { currentIdx: 0, secsLeft: 0, running: false, totalElapsed: 0 };
 let ws;
-let popupWin = null;
+
+// PiP
+const pipCanvas = document.getElementById('pip-canvas');
+const pipCtx = pipCanvas.getContext('2d');
+const pipVideo = document.getElementById('pip-video');
+pipVideo.srcObject = pipCanvas.captureStream(4);
 
 function fmt(s) { const a = Math.abs(s); return (s < 0 ? '+' : '') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2,'0'); }
 function fmtS(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
@@ -107,7 +115,6 @@ function send(cmd, extra) { ws.send(JSON.stringify({ cmd, ...extra })); }
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
-
   ws.onopen = () => {
     document.getElementById('dot').className = 'connection-dot connected';
     document.getElementById('conn-label').textContent = 'Connected';
@@ -124,11 +131,11 @@ function connect() {
       TOTAL_SECS = AGENDA.reduce((a, x) => a + x.mins * 60, 0);
       state = msg.state;
       buildList();
-      render();
     } else if (msg.type === 'state') {
       state = { currentIdx: msg.currentIdx, secsLeft: msg.secsLeft, running: msg.running, totalElapsed: msg.totalElapsed };
-      render();
     }
+    render();
+    drawPip();
   };
 }
 
@@ -158,7 +165,7 @@ function render() {
   document.getElementById('total-elapsed').textContent = fmtS(state.totalElapsed);
   document.getElementById('total-remaining').textContent = fmtS(Math.max(0, TOTAL_SECS - state.totalElapsed));
   document.getElementById('total-planned').textContent = fmtS(TOTAL_SECS);
-  document.title = fmt(state.secsLeft) + ' · ' + item.name;
+  document.title = fmt(state.secsLeft) + ' · ' + (AGENDA[state.currentIdx]?.name || '');
 
   document.querySelectorAll('.agenda-item').forEach((el, i) => {
     el.classList.remove('active','done','overtime');
@@ -196,39 +203,90 @@ document.getElementById('btn-pause').addEventListener('click', () => send('pause
 document.getElementById('btn-next').addEventListener('click', () => send('next'));
 document.getElementById('btn-reset').addEventListener('click', () => send('reset'));
 
-// ── Pop-out window ────────────────────────────────────────────────────────────
-// Opens /popup — a separate page on the same Railway server.
-// Because it connects via WebSocket to the same server, it stays perfectly
-// in sync without any BroadcastChannel trickery, and works even when the
-// main tab is in slide-show mode or another app is in the foreground.
-document.getElementById('btn-popup').addEventListener('click', () => {
-  if (popupWin && !popupWin.closed) { popupWin.focus(); return; }
+// ── Picture-in-Picture ────────────────────────────────────────────────────────
+function drawPip() {
+  if (!AGENDA.length) return;
+  const W = 640, H = 360;
+  const item = AGENDA[state.currentIdx];
+  const alloc = item.mins * 60;
 
-  const pw = 520, ph = 340;
-  const left = window.screen.width - pw - 20;
-  const top = 20;
-  popupWin = window.open(
-    '/popup',
-    'allhands_popup',
-    `width=${pw},height=${ph},left=${left},top=${top},resizable=yes,toolbar=no,menubar=no,scrollbars=no`
-  );
-  if (!popupWin) { alert('Popup blocked — please allow popups for this site in Chrome.'); return; }
-  document.getElementById('btn-popup').textContent = '✕ Close float';
+  let color = '#1D9E75';
+  if (state.secsLeft < 0) color = '#E24B4A';
+  else if (item.type === 'qa') color = '#378ADD';
+  else if (state.secsLeft <= 120) color = '#BA7517';
 
-  const check = setInterval(() => {
-    if (popupWin && popupWin.closed) {
-      clearInterval(check);
-      document.getElementById('btn-popup').textContent = '⧉ Pop out';
-      popupWin = null;
-    }
-  }, 600);
+  // Background
+  pipCtx.fillStyle = '#111110';
+  pipCtx.fillRect(0, 0, W, H);
+
+  // Section name
+  const label = item.name + (item.type === 'qa' ? ' — Q&A' : '');
+  pipCtx.fillStyle = '#bbbbba';
+  pipCtx.font = '500 22px -apple-system, sans-serif';
+  pipCtx.textAlign = 'center';
+  pipCtx.fillText(label, W / 2, 72);
+
+  // Presenter
+  pipCtx.fillStyle = '#555';
+  pipCtx.font = '17px -apple-system, sans-serif';
+  pipCtx.fillText(item.presenter, W / 2, 100);
+
+  // Big timer
+  pipCtx.fillStyle = color;
+  pipCtx.font = '700 168px "Courier New", monospace';
+  pipCtx.textAlign = 'center';
+  pipCtx.fillText(fmt(state.secsLeft), W / 2, 272);
+
+  // Progress bar
+  const bx = 56, by = 298, bw = W - 112, bh = 7;
+  const pct = state.secsLeft >= 0 ? Math.min(1, (alloc - state.secsLeft) / alloc) : 1;
+  pipCtx.fillStyle = '#222';
+  pipCtx.beginPath(); pipCtx.roundRect(bx, by, bw, bh, 3); pipCtx.fill();
+  if (pct > 0) {
+    pipCtx.fillStyle = color;
+    pipCtx.beginPath(); pipCtx.roundRect(bx, by, bw * pct, bh, 3); pipCtx.fill();
+  }
+
+  // Status label
+  let statusTxt = state.running ? 'running' : 'paused';
+  if (state.secsLeft < 0) statusTxt = 'OVERTIME';
+  else if (item.type === 'qa') statusTxt = state.running ? 'Q&A' : 'ready';
+  else if (state.secsLeft <= 120) statusTxt = '2 MIN WARNING';
+  pipCtx.fillStyle = '#444';
+  pipCtx.font = '15px -apple-system, sans-serif';
+  pipCtx.textAlign = 'center';
+  pipCtx.fillText(statusTxt.toUpperCase(), W / 2, 338);
+}
+
+// Draw every second so PiP stays fresh even when tab is backgrounded
+setInterval(() => { drawPip(); }, 1000);
+drawPip();
+
+document.getElementById('btn-pip').addEventListener('click', async () => {
+  if (document.pictureInPictureElement) {
+    await document.exitPictureInPicture();
+    return;
+  }
+  try {
+    await pipVideo.play();
+    await pipVideo.requestPictureInPicture();
+  } catch (err) {
+    alert('PiP konnte nicht gestartet werden: ' + err.message +
+      '\n\nStell sicher dass du Chrome verwendest und die Seite nicht im Inkognito-Modus läuft.');
+  }
+});
+
+pipVideo.addEventListener('enterpictureinpicture', () => {
+  document.getElementById('btn-pip').textContent = '✕ Close float';
+});
+pipVideo.addEventListener('leavepictureinpicture', () => {
+  document.getElementById('btn-pip').textContent = '⧉ Float';
 });
 
 function copyCtrlLink() {
   const url = location.origin + '/controller';
   navigator.clipboard.writeText(url).then(() => alert('Link kopiert: ' + url));
 }
-
 document.getElementById('ctrl-link').href = location.origin + '/controller';
 
 connect();
