@@ -33,6 +33,7 @@
   .controls button:hover { background: #f5f5f3; }
   .controls button:active { transform: scale(0.98); }
   .btn-primary { background: #E6F1FB !important; border-color: #378ADD !important; color: #185FA5 !important; }
+  .btn-popup { background: #f0efe8 !important; border-color: #c8c6bc !important; }
   .agenda-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 1.25rem; }
   .item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 8px; border: 1px solid #e0e0d8; background: #fff; cursor: pointer; transition: background 0.15s; }
   .item:hover { background: #f5f5f3; }
@@ -66,7 +67,7 @@
     <span id="conn-label">Connecting…</span>
   </div>
   <div class="controller-link">
-    📱 Controller (for your phone): <a id="ctrl-link" href="/controller" target="_blank">/controller</a>
+    📱 Controller (phone): <a id="ctrl-link" href="/controller" target="_blank">/controller</a>
     <span style="cursor:pointer;color:#378ADD" onclick="copyCtrlLink()">Copy link</span>
   </div>
 
@@ -82,6 +83,7 @@
     <button id="btn-pause">⏸ Pause</button>
     <button id="btn-next">⏭ Next</button>
     <button id="btn-reset">↺ Reset</button>
+    <button id="btn-popup" class="btn-popup">⧉ Pop out</button>
   </div>
   <div class="agenda-list" id="agenda-list"></div>
   <div class="totals">
@@ -95,6 +97,7 @@ let AGENDA = [];
 let TOTAL_SECS = 0;
 let state = { currentIdx: 0, secsLeft: 0, running: false, totalElapsed: 0 };
 let ws;
+let popupWin = null;
 
 function fmt(s) { const a = Math.abs(s); return (s < 0 ? '+' : '') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2,'0'); }
 function fmtS(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
@@ -193,12 +196,39 @@ document.getElementById('btn-pause').addEventListener('click', () => send('pause
 document.getElementById('btn-next').addEventListener('click', () => send('next'));
 document.getElementById('btn-reset').addEventListener('click', () => send('reset'));
 
+// ── Pop-out window ────────────────────────────────────────────────────────────
+// Opens /popup — a separate page on the same Railway server.
+// Because it connects via WebSocket to the same server, it stays perfectly
+// in sync without any BroadcastChannel trickery, and works even when the
+// main tab is in slide-show mode or another app is in the foreground.
+document.getElementById('btn-popup').addEventListener('click', () => {
+  if (popupWin && !popupWin.closed) { popupWin.focus(); return; }
+
+  const pw = 520, ph = 340;
+  const left = window.screen.width - pw - 20;
+  const top = 20;
+  popupWin = window.open(
+    '/popup',
+    'allhands_popup',
+    `width=${pw},height=${ph},left=${left},top=${top},resizable=yes,toolbar=no,menubar=no,scrollbars=no`
+  );
+  if (!popupWin) { alert('Popup blocked — please allow popups for this site in Chrome.'); return; }
+  document.getElementById('btn-popup').textContent = '✕ Close float';
+
+  const check = setInterval(() => {
+    if (popupWin && popupWin.closed) {
+      clearInterval(check);
+      document.getElementById('btn-popup').textContent = '⧉ Pop out';
+      popupWin = null;
+    }
+  }, 600);
+});
+
 function copyCtrlLink() {
   const url = location.origin + '/controller';
   navigator.clipboard.writeText(url).then(() => alert('Link kopiert: ' + url));
 }
 
-// Set full controller URL
 document.getElementById('ctrl-link').href = location.origin + '/controller';
 
 connect();
