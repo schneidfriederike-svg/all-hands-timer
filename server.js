@@ -49,6 +49,7 @@ startTick();
 
 function getAgenda() {
   return [
+    { name: "Welcome",                  presenter: "@Charlotte Schneid",             mins: 1,  type: "content" },
     { name: "Carbon market update",     presenter: "@Carla Woydt",                  mins: 7,  type: "content" },
     { name: "Carbon market update",     presenter: "Q&A",                           mins: 5,  type: "qa"      },
     { name: "General company update",   presenter: "Company Leadership",             mins: 7,  type: "content" },
@@ -60,7 +61,7 @@ function getAgenda() {
     { name: "Risk dashboard",           presenter: "Q&A",                           mins: 2,  type: "qa"      },
     { name: "Supply dashboard",         presenter: "@Kilian Balks",                 mins: 7,  type: "content" },
     { name: "Supply dashboard",         presenter: "Q&A",                           mins: 2,  type: "qa"      },
-    { name: "New joiners",              presenter: "managers / @Charlotte Schneid", mins: 4,  type: "content" },
+    { name: "New joiners",              presenter: "Managers",                     mins: 3,  type: "content" },
   ];
 }
 
