@@ -6,107 +6,38 @@
 <title>Timer Controller</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: #111110;
-    color: #e8e8e4;
-    min-height: 100vh;
-    min-height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    padding: 16px;
-    gap: 12px;
-  }
-
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #111110; color: #e8e8e4; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; padding: 16px; gap: 12px; }
   .conn { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: #333; transition: background 0.3s; }
   .dot.on { background: #1D9E75; }
   .dot.err { background: #E24B4A; }
-
-  .now-card {
-    background: #1a1a18;
-    border: 1px solid #2a2a28;
-    border-radius: 14px;
-    padding: 18px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
+  .now-card { background: #1a1a18; border: 1px solid #2a2a28; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 2px; }
   .now-label { font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
   .now-name { font-size: 17px; font-weight: 600; color: #e8e8e4; line-height: 1.2; }
   .now-presenter { font-size: 13px; color: #555; margin-bottom: 12px; }
-  .now-timer {
-    font-size: 72px;
-    font-weight: 700;
-    font-family: "SF Mono", "Fira Mono", "Courier New", monospace;
-    letter-spacing: -3px;
-    line-height: 1;
-    color: #1D9E75;
-    transition: color 0.3s;
-    margin-bottom: 4px;
-  }
+  .now-timer { font-size: 72px; font-weight: 700; font-family: "SF Mono","Fira Mono","Courier New",monospace; letter-spacing: -3px; line-height: 1; color: #1D9E75; transition: color 0.3s; margin-bottom: 4px; }
   .now-status { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
-
   .bar-wrap { height: 3px; background: #222; border-radius: 2px; overflow: hidden; margin-top: 12px; }
   .bar-fill { height: 100%; border-radius: 2px; background: #1D9E75; transition: width 0.9s linear, background 0.3s; }
-
-  .big-btns {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .big-btn {
-    border: none;
-    border-radius: 14px;
-    font-size: 17px;
-    font-weight: 600;
-    padding: 22px 10px;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    transition: transform 0.1s, opacity 0.1s;
-    letter-spacing: -0.2px;
-  }
+  .big-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .big-btn { border: none; border-radius: 14px; font-size: 17px; font-weight: 600; padding: 22px 10px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; transition: transform 0.1s, opacity 0.1s; }
   .big-btn:active { transform: scale(0.96); opacity: 0.85; }
   .big-btn .icon { font-size: 28px; line-height: 1; }
   .big-btn .lbl { font-size: 13px; font-weight: 500; }
-
   #b-play  { background: #0e3d28; color: #3de0a0; }
   #b-pause { background: #2a2a1a; color: #d4c46a; }
   #b-next  { background: #122038; color: #7ab8ee; grid-column: 1 / -1; font-size: 20px; padding: 26px 10px; }
   #b-reset { background: #1e1616; color: #cc6666; font-size: 13px; padding: 14px 10px; grid-column: 1 / -1; }
-
-  .next-up {
-    background: #1a1a18;
-    border: 1px solid #2a2a28;
-    border-radius: 12px;
-    padding: 14px 16px;
-  }
+  .next-up { background: #1a1a18; border: 1px solid #2a2a28; border-radius: 12px; padding: 14px 16px; }
   .next-up-label { font-size: 10px; color: #444; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
-  .next-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.12s;
-  }
+  .next-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background 0.12s; }
   .next-item:active { background: #222; }
   .next-item .ni-name { flex: 1; font-size: 13px; color: #aaa; }
   .next-item .ni-dur { font-size: 12px; color: #444; }
-  .next-item.upcoming { color: #777; }
 </style>
 </head>
 <body>
-
-<div class="conn">
-  <div class="dot" id="dot"></div>
-  <span id="conn-lbl">Connecting…</span>
-</div>
-
+<div class="conn"><div class="dot" id="dot"></div><span id="conn-lbl">Connecting…</span></div>
 <div class="now-card">
   <div class="now-label">Now</div>
   <div class="now-name" id="c-name">–</div>
@@ -115,78 +46,55 @@
   <div class="now-status" id="c-status">–</div>
   <div class="bar-wrap"><div class="bar-fill" id="c-bar" style="width:0%"></div></div>
 </div>
-
 <div class="big-btns">
   <button class="big-btn" id="b-play"><span class="icon">▶</span><span class="lbl">Play</span></button>
   <button class="big-btn" id="b-pause"><span class="icon">⏸</span><span class="lbl">Pause</span></button>
   <button class="big-btn" id="b-next"><span class="icon">⏭</span><span class="lbl">Next section</span></button>
   <button class="big-btn" id="b-reset"><span class="icon">↺</span><span class="lbl">Reset all</span></button>
 </div>
-
-<div class="next-up">
-  <div class="next-up-label">Up next</div>
-  <div id="next-list"></div>
-</div>
-
+<div class="next-up"><div class="next-up-label">Up next</div><div id="next-list"></div></div>
 <script>
 let AGENDA = [];
-let TOTAL_SECS = 0;
 let state = { currentIdx: 0, secsLeft: 0, running: false, totalElapsed: 0 };
-let ws;
-
 function fmt(s) { const a = Math.abs(s); return (s < 0 ? '+' : '') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2,'0'); }
-
-function send(cmd) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd })); }
-
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}`);
-
-  ws.onopen = () => {
-    document.getElementById('dot').className = 'dot on';
-    document.getElementById('conn-lbl').textContent = 'Connected';
-  };
-  ws.onclose = () => {
-    document.getElementById('dot').className = 'dot err';
-    document.getElementById('conn-lbl').textContent = 'Reconnecting…';
-    setTimeout(connect, 2000);
-  };
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'init') {
-      AGENDA = msg.agenda;
-      TOTAL_SECS = AGENDA.reduce((a, x) => a + x.mins * 60, 0);
-      state = msg.state;
-    } else if (msg.type === 'state') {
-      state = { currentIdx: msg.currentIdx, secsLeft: msg.secsLeft, running: msg.running, totalElapsed: msg.totalElapsed };
-    }
-    render();
-  };
+function setConnected(ok) {
+  document.getElementById('dot').className = 'dot ' + (ok ? 'on' : 'err');
+  document.getElementById('conn-lbl').textContent = ok ? 'Connected' : 'Reconnecting…';
 }
-
+async function send(cmd, extra = {}) {
+  try {
+    const res = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd, ...extra }) });
+    state = await res.json();
+    render();
+  } catch(e) { console.error(e); }
+}
+setInterval(async () => {
+  try {
+    const res = await fetch('/api/state');
+    const data = await res.json();
+    if (!AGENDA.length) AGENDA = data.agenda;
+    state = data.state;
+    render();
+    setConnected(true);
+  } catch(e) { setConnected(false); }
+}, 1000);
 function render() {
   if (!AGENDA.length) return;
   const item = AGENDA[state.currentIdx];
   const alloc = item.mins * 60;
-
   document.getElementById('c-name').textContent = item.name + (item.type === 'qa' ? ' — Q&A' : '');
   document.getElementById('c-presenter').textContent = item.presenter;
   document.getElementById('c-timer').textContent = fmt(state.secsLeft);
-
   const pct = state.secsLeft >= 0 ? Math.min(100, ((alloc - state.secsLeft) / alloc) * 100) : 100;
   document.getElementById('c-bar').style.width = pct + '%';
-
   let color = '#1D9E75', status = state.running ? 'Running' : 'Paused';
   if (state.secsLeft < 0) { color = '#E24B4A'; status = 'OVERTIME'; }
   else if (item.type === 'qa') { color = '#378ADD'; status = state.running ? 'Q&A' : 'Ready'; }
   else if (state.secsLeft <= 120) { color = '#BA7517'; status = '2 min warning'; }
-
   document.getElementById('c-timer').style.color = color;
   document.getElementById('c-bar').style.background = color;
   document.getElementById('c-status').textContent = status;
   document.title = fmt(state.secsLeft) + ' · Controller';
-
-  // Up next list
   const nl = document.getElementById('next-list');
   nl.innerHTML = '';
   const upcoming = AGENDA.slice(state.currentIdx + 1, state.currentIdx + 5);
@@ -195,22 +103,15 @@ function render() {
     const realIdx = state.currentIdx + 1 + offset;
     const div = document.createElement('div');
     div.className = 'next-item';
-    div.innerHTML = `<span class="ni-name">${it.type === 'qa' ? '↳ Q&A' : it.name}${it.type === 'qa' ? '' : ''}<br><span style="font-size:11px;color:#444">${it.presenter}</span></span><span class="ni-dur">${it.mins}m</span>`;
-    div.addEventListener('click', () => {
-      if (confirm('Jump to: ' + it.name + (it.type === 'qa' ? ' Q&A' : '') + '?')) {
-        ws.send(JSON.stringify({ cmd: 'jump', idx: realIdx }));
-      }
-    });
+    div.innerHTML = `<span class="ni-name">${it.type==='qa'?'↳ Q&A':it.name}<br><span style="font-size:11px;color:#444">${it.presenter}</span></span><span class="ni-dur">${it.mins}m</span>`;
+    div.addEventListener('click', () => { if (confirm('Jump to: ' + it.name + (it.type==='qa'?' Q&A':'') + '?')) send('jump', { idx: realIdx }); });
     nl.appendChild(div);
   });
 }
-
 document.getElementById('b-play').addEventListener('click', () => send('play'));
 document.getElementById('b-pause').addEventListener('click', () => send('pause'));
 document.getElementById('b-next').addEventListener('click', () => send('next'));
 document.getElementById('b-reset').addEventListener('click', () => { if (confirm('Reset timer?')) send('reset'); });
-
-connect();
 </script>
 </body>
 </html>
