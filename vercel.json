@@ -1,0 +1,6 @@
+{
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/controller", "destination": "/controller.html" }
+  ]
+}
