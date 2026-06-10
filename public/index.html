@@ -68,7 +68,6 @@
     📱 Controller (phone): <a id="ctrl-link" href="/controller" target="_blank">/controller</a>
     <span style="cursor:pointer;color:#378ADD" onclick="copyCtrlLink()">Copy link</span>
   </div>
-
   <div class="timer-card">
     <div class="timer-section" id="current-name">Waiting for server…</div>
     <div class="timer-presenter" id="current-presenter">–</div>
@@ -81,7 +80,7 @@
     <button id="btn-pause">⏸ Pause</button>
     <button id="btn-next">⏭ Next</button>
     <button id="btn-reset">↺ Reset</button>
-    <button id="btn-pip" class="btn-popup">⧉ Float</button>
+    <button id="btn-pip" class="btn-popup">⥇ Float</button>
   </div>
   <div class="agenda-list" id="agenda-list"></div>
   <div class="totals">
@@ -90,55 +89,58 @@
     <div class="total-card"><div class="total-label">remaining</div><div class="total-val" id="total-remaining">–:––</div></div>
   </div>
 </div>
-
-<!-- Hidden canvas + video for Picture-in-Picture -->
 <canvas id="pip-canvas" width="640" height="360" style="display:none"></canvas>
 <video id="pip-video" style="position:absolute;width:1px;height:1px;opacity:0.01;pointer-events:none" muted playsinline></video>
-
 <script>
 let AGENDA = [];
 let TOTAL_SECS = 0;
 let state = { currentIdx: 0, secsLeft: 0, running: false, totalElapsed: 0 };
-let ws;
-
-// PiP
 const pipCanvas = document.getElementById('pip-canvas');
 const pipCtx = pipCanvas.getContext('2d');
 const pipVideo = document.getElementById('pip-video');
 pipVideo.srcObject = pipCanvas.captureStream(4);
-
 function fmt(s) { const a = Math.abs(s); return (s < 0 ? '+' : '') + Math.floor(a / 60) + ':' + String(a % 60).padStart(2,'0'); }
 function fmtS(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
-
-function send(cmd, extra) { ws.send(JSON.stringify({ cmd, ...extra })); }
-
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}`);
-  ws.onopen = () => {
-    document.getElementById('dot').className = 'connection-dot connected';
-    document.getElementById('conn-label').textContent = 'Connected';
-  };
-  ws.onclose = () => {
-    document.getElementById('dot').className = 'connection-dot error';
-    document.getElementById('conn-label').textContent = 'Reconnecting…';
-    setTimeout(connect, 2000);
-  };
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === 'init') {
-      AGENDA = msg.agenda;
+function setConnected(ok) {
+  document.getElementById('dot').className = 'connection-dot ' + (ok ? 'connected' : 'error');
+  document.getElementById('conn-label').textContent = ok ? 'Connected' : 'Reconnecting…';
+}
+async function sendCmd(cmd, extra) {
+  await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd, ...extra }) });
+}
+setInterval(async () => {
+  try {
+    const res = await fetch('/api/state');
+    const data = await res.json();
+    if (!AGENDA.length) {
+      AGENDA = data.agenda;
       TOTAL_SECS = AGENDA.reduce((a, x) => a + x.mins * 60, 0);
-      state = msg.state;
+      state = data.state;
       buildList();
-    } else if (msg.type === 'state') {
-      state = { currentIdx: msg.currentIdx, secsLeft: msg.secsLeft, running: msg.running, totalElapsed: msg.totalElapsed };
+      render();
+      drawPip();
+      setConnected(true);
+      return;
+    }
+    const s = data.state;
+    if (s.currentIdx !== state.currentIdx || s.running !== state.running) {
+      state = s;
+    } else if (state.running) {
+      state.secsLeft--;
+      state.totalElapsed++;
+      if (state.secsLeft < 0 && AGENDA[state.currentIdx].type === 'content' && state.currentIdx + 1 < AGENDA.length && AGENDA[state.currentIdx + 1].type === 'qa') {
+        state.currentIdx++;
+        state.secsLeft = AGENDA[state.currentIdx].mins * 60;
+      }
+      fetch('/api/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) }).catch(() => {});
+    } else {
+      state = s;
     }
     render();
     drawPip();
-  };
-}
-
+    setConnected(true);
+  } catch (e) { setConnected(false); }
+}, 1000);
 function render() {
   if (!AGENDA.length) return;
   const item = AGENDA[state.currentIdx];
@@ -146,37 +148,24 @@ function render() {
   const disp = document.getElementById('timer-display');
   const prog = document.getElementById('progress-fill');
   const lbl = document.getElementById('timer-label');
-
   document.getElementById('current-name').textContent = item.name + (item.type === 'qa' ? ' — Q&A' : '');
   document.getElementById('current-presenter').textContent = item.presenter;
   disp.textContent = fmt(state.secsLeft);
   prog.style.width = (state.secsLeft >= 0 ? Math.min(100, ((alloc - state.secsLeft) / alloc) * 100) : 100) + '%';
-
-  if (state.secsLeft < 0) {
-    disp.className = 'timer-display red'; prog.style.background = '#E24B4A'; lbl.textContent = 'overtime';
-  } else if (item.type === 'qa') {
-    disp.className = 'timer-display blue'; prog.style.background = '#378ADD'; lbl.textContent = state.running ? 'Q&A' : 'ready';
-  } else if (state.secsLeft <= 120) {
-    disp.className = 'timer-display amber'; prog.style.background = '#EF9F27'; lbl.textContent = '2 min warning';
-  } else {
-    disp.className = 'timer-display green'; prog.style.background = '#1D9E75'; lbl.textContent = state.running ? 'running' : 'ready';
-  }
-
+  if (state.secsLeft < 0) { disp.className = 'timer-display red'; prog.style.background = '#E24B4A'; lbl.textContent = 'overtime'; }
+  else if (item.type === 'qa') { disp.className = 'timer-display blue'; prog.style.background = '#378ADD'; lbl.textContent = state.running ? 'Q&A' : 'ready'; }
+  else if (state.secsLeft <= 120) { disp.className = 'timer-display amber'; prog.style.background = '#EF9F27'; lbl.textContent = '2 min warning'; }
+  else { disp.className = 'timer-display green'; prog.style.background = '#1D9E75'; lbl.textContent = state.running ? 'running' : 'ready'; }
   document.getElementById('total-elapsed').textContent = fmtS(state.totalElapsed);
   document.getElementById('total-remaining').textContent = fmtS(Math.max(0, TOTAL_SECS - state.totalElapsed));
   document.getElementById('total-planned').textContent = fmtS(TOTAL_SECS);
   document.title = fmt(state.secsLeft) + ' · ' + (AGENDA[state.currentIdx]?.name || '');
-
   document.querySelectorAll('.agenda-item').forEach((el, i) => {
     el.classList.remove('active','done','overtime');
     if (i < state.currentIdx) el.classList.add('done');
-    else if (i === state.currentIdx) {
-      el.classList.add(state.secsLeft < 0 ? 'overtime' : 'active');
-      el.querySelector('.item-status').textContent = state.secsLeft < 0 ? fmt(state.secsLeft) : '';
-    }
+    else if (i === state.currentIdx) { el.classList.add(state.secsLeft < 0 ? 'overtime' : 'active'); el.querySelector('.item-status').textContent = state.secsLeft < 0 ? fmt(state.secsLeft) : ''; }
   });
 }
-
 function buildList() {
   const list = document.getElementById('agenda-list');
   list.innerHTML = '';
@@ -185,111 +174,44 @@ function buildList() {
     if (item.type === 'content') topicNum++;
     const div = document.createElement('div');
     div.className = 'item agenda-item' + (item.type === 'qa' ? ' qa-item' : '');
-    div.innerHTML = `
-      <span class="item-num">${item.type === 'content' ? topicNum : '↳'}</span>
-      <span class="item-info">
-        <span class="item-name">${item.type === 'qa' ? 'Q&A' : item.name}</span>
-        <span class="item-presenter">${item.presenter}</span>
-      </span>
-      <span class="item-dur">${item.mins} min</span>
-      <span class="item-status"></span>`;
-    div.addEventListener('click', () => send('jump', { idx: i }));
+    div.innerHTML = `<span class="item-num">${item.type === 'content' ? topicNum : '↳'}</span><span class="item-info"><span class="item-name">${item.type === 'qa' ? 'Q&A' : item.name}</span><span class="item-presenter">${item.presenter}</span></span><span class="item-dur">${item.mins} min</span><span class="item-status"></span>`;
+    div.addEventListener('click', () => sendCmd('jump', { idx: i }));
     list.appendChild(div);
   });
 }
-
-document.getElementById('btn-play').addEventListener('click', () => send('play'));
-document.getElementById('btn-pause').addEventListener('click', () => send('pause'));
-document.getElementById('btn-next').addEventListener('click', () => send('next'));
-document.getElementById('btn-reset').addEventListener('click', () => send('reset'));
-
-// ── Picture-in-Picture ────────────────────────────────────────────────────────
+document.getElementById('btn-play').addEventListener('click', () => sendCmd('play'));
+document.getElementById('btn-pause').addEventListener('click', () => sendCmd('pause'));
+document.getElementById('btn-next').addEventListener('click', () => sendCmd('next'));
+document.getElementById('btn-reset').addEventListener('click', () => sendCmd('reset'));
 function drawPip() {
   if (!AGENDA.length) return;
   const W = 640, H = 360;
   const item = AGENDA[state.currentIdx];
   const alloc = item.mins * 60;
-
   let color = '#1D9E75';
   if (state.secsLeft < 0) color = '#E24B4A';
   else if (item.type === 'qa') color = '#378ADD';
   else if (state.secsLeft <= 120) color = '#BA7517';
-
-  // Background
-  pipCtx.fillStyle = '#111110';
-  pipCtx.fillRect(0, 0, W, H);
-
-  // Section name
-  const label = item.name + (item.type === 'qa' ? ' — Q&A' : '');
-  pipCtx.fillStyle = '#bbbbba';
-  pipCtx.font = '500 22px -apple-system, sans-serif';
-  pipCtx.textAlign = 'center';
-  pipCtx.fillText(label, W / 2, 72);
-
-  // Presenter
-  pipCtx.fillStyle = '#555';
-  pipCtx.font = '17px -apple-system, sans-serif';
-  pipCtx.fillText(item.presenter, W / 2, 100);
-
-  // Big timer
-  pipCtx.fillStyle = color;
-  pipCtx.font = '700 168px "Courier New", monospace';
-  pipCtx.textAlign = 'center';
-  pipCtx.fillText(fmt(state.secsLeft), W / 2, 272);
-
-  // Progress bar
-  const bx = 56, by = 298, bw = W - 112, bh = 7;
-  const pct = state.secsLeft >= 0 ? Math.min(1, (alloc - state.secsLeft) / alloc) : 1;
-  pipCtx.fillStyle = '#222';
-  pipCtx.beginPath(); pipCtx.roundRect(bx, by, bw, bh, 3); pipCtx.fill();
-  if (pct > 0) {
-    pipCtx.fillStyle = color;
-    pipCtx.beginPath(); pipCtx.roundRect(bx, by, bw * pct, bh, 3); pipCtx.fill();
-  }
-
-  // Status label
-  let statusTxt = state.running ? 'running' : 'paused';
-  if (state.secsLeft < 0) statusTxt = 'OVERTIME';
-  else if (item.type === 'qa') statusTxt = state.running ? 'Q&A' : 'ready';
-  else if (state.secsLeft <= 120) statusTxt = '2 MIN WARNING';
-  pipCtx.fillStyle = '#444';
-  pipCtx.font = '15px -apple-system, sans-serif';
-  pipCtx.textAlign = 'center';
-  pipCtx.fillText(statusTxt.toUpperCase(), W / 2, 338);
+  pipCtx.fillStyle = '#111110'; pipCtx.fillRect(0, 0, W, H);
+  pipCtx.fillStyle = '#bbbbba'; pipCtx.font = '500 22px -apple-system, sans-serif'; pipCtx.textAlign = 'center';
+  pipCtx.fillText(item.name + (item.type === 'qa' ? ' — Q&A' : ''), W/2, 72);
+  pipCtx.fillStyle = '#555'; pipCtx.font = '17px -apple-system, sans-serif'; pipCtx.fillText(item.presenter, W/2, 100);
+  pipCtx.fillStyle = color; pipCtx.font = '700 168px "Courier New", monospace'; pipCtx.fillText(fmt(state.secsLeft), W/2, 272);
+  const bx=56,by=298,bw=W-112,bh=7,pct=state.secsLeft>=0?Math.min(1,(alloc-state.secsLeft)/alloc):1;
+  pipCtx.fillStyle='#222'; pipCtx.beginPath(); pipCtx.roundRect(bx,by,bw,bh,3); pipCtx.fill();
+  if(pct>0){pipCtx.fillStyle=color;pipCtx.beginPath();pipCtx.roundRect(bx,by,bw*pct,bh,3);pipCtx.fill();}
+  let s2=state.running?'running':'paused';if(state.secsLeft<0)s2='OVERTIME';else if(item.type==='qa')s2=state.running?'Q&A':'ready';else if(state.secsLeft<=120)s2='2 MIN WARNING';
+  pipCtx.fillStyle='#444';pipCtx.font='15px -apple-system, sans-serif';pipCtx.fillText(s2.toUpperCase(),W/2,338);
 }
-
-// Draw every second so PiP stays fresh even when tab is backgrounded
-setInterval(() => { drawPip(); }, 1000);
-drawPip();
-
+setInterval(()=>{drawPip();},1000); drawPip();
 document.getElementById('btn-pip').addEventListener('click', async () => {
-  if (document.pictureInPictureElement) {
-    await document.exitPictureInPicture();
-    return;
-  }
-  try {
-    await pipVideo.play();
-    await pipVideo.requestPictureInPicture();
-  } catch (err) {
-    alert('PiP konnte nicht gestartet werden: ' + err.message +
-      '\n\nStell sicher dass du Chrome verwendest und die Seite nicht im Inkognito-Modus läuft.');
-  }
+  if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return; }
+  try { await pipVideo.play(); await pipVideo.requestPictureInPicture(); } catch(err) { alert('PiP error: '+err.message); }
 });
-
-pipVideo.addEventListener('enterpictureinpicture', () => {
-  document.getElementById('btn-pip').textContent = '✕ Close float';
-});
-pipVideo.addEventListener('leavepictureinpicture', () => {
-  document.getElementById('btn-pip').textContent = '⧉ Float';
-});
-
-function copyCtrlLink() {
-  const url = location.origin + '/controller';
-  navigator.clipboard.writeText(url).then(() => alert('Link kopiert: ' + url));
-}
+pipVideo.addEventListener('enterpictureinpicture', () => { document.getElementById('btn-pip').textContent = '✕ Close float'; });
+pipVideo.addEventListener('leavepictureinpicture', () => { document.getElementById('btn-pip').textContent = '⥇ Float'; });
+function copyCtrlLink() { const url = location.origin + '/controller'; navigator.clipboard.writeText(url).then(() => alert('Link kopiert: ' + url)); }
 document.getElementById('ctrl-link').href = location.origin + '/controller';
-
-connect();
 </script>
 </body>
 </html>
